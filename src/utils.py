@@ -3,11 +3,17 @@ import re, requests, configparser
 def get_domain(file_path='config.ini'):
     try:
         r = requests.get("https://streamingcommunity.at", allow_redirects=False, timeout=3)
+        loc = r.headers.get('location')
+        if loc is None:
+            raise ValueError
         return r.headers['Location'].removeprefix("https://streamingcommunity.").removesuffix("/")
     except requests.exceptions.ConnectionError:
-        config = configparser.ConfigParser()
-        config.read(file_path)
-        return config['DOMAIN']['updated']
+        pass
+    except ValueError:
+        pass
+    config = configparser.ConfigParser()
+    config.read(file_path)
+    return config['DOMAIN']['updated']
 
 def versioning_control(file_path="config.ini"):
     config = configparser.ConfigParser()

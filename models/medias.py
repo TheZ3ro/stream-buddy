@@ -15,6 +15,10 @@ class TVSerie:
         self.last_air_date: str = last_air_date
         self.seasons_count: int = seasons
 
+class Url:
+    def __init__(self, url) -> None:
+        self.url: str = url
+
 class Season:
     def __init__(self, id, number, episodes):
         self.season_id = id

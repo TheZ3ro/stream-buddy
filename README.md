@@ -55,6 +55,19 @@ guarda o scarica contenuti da StreamingCommunity
 > updated = <NUOVO_DOMINIO>
 > ```
 
+## Usage
+
+Ricerca da interfaccia UI terminale:
+```
+python3 ./main.py
+```
+
+Download da un URL specifico:
+```
+python3 ./main.py <url>
+```
+
+Per il download veloce dei video si consiglia l'uso di `yt-dlp`.
 
 ## Demo
 https://github.com/Bbalduzz/stream-buddy/assets/81587335/1a83436a-1b80-454a-be53-f1dfd8aa1023
