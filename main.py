@@ -93,10 +93,12 @@ class StreamingCommunityAPI:
             self.solution_query.url,
             headers=self.headers,
         ).json()
-        internal_id = response["props"].get("title").get("id")
+        if embed_url := response["props"].get("embedUrl"):
+            return embed_url
 
+        internal_url = response["url"]
         response = requests.get(
-            f'https://streamingcommunity.{self.domain}/watch/{internal_id}',
+            f'https://streamingcommunity.{self.domain}{internal_url}',
             headers=self.headers,
         ).json()
         iframe_url = response["props"]["embedUrl"]
@@ -115,7 +117,8 @@ class StreamingCommunityAPI:
             params_clean_matches = re.findall(r"'token[0-9a-zA-Z]*':\s*'([^']*)'", playlist_match_formatted)
             exp = re.findall(r"'expires':\s*'([^']*)'", playlist_match_formatted)[0]
             internal_url = re.findall(r"url:\s*'([^']*)',", str(iframe_video_infos).replace("\\", ''))[0]
-            return internal_url, Token(*params_clean_matches, expiration=exp)
+            fhd = re.findall(r"canPlayFHD\s*true\s*\n", str(iframe_video_infos).replace("\\", '')) is not None
+            return internal_url, Token(*params_clean_matches, fhd=fhd, expiration=exp)
 
     def get_media_contents(self, internal_url, tokens):
         self.master_uri = f"{internal_url}&{str(tokens)}"
