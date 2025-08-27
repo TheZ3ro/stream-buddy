@@ -1,14 +1,13 @@
-import requests, json, os, re, webbrowser, concurrent.futures, signal
-from flask import Flask
+import requests, json, os, re
 from src.display import Ask
-from src.downloader import VideoDownloader
 from src.m3u8_parser import M3U8PlaylistParser
-from src.utils import get_domain, versioning_control
+from src.utils import get_domain, get_language, versioning_control
 from models.medias import Movie, TVSerie, Url, Season, Episode
 from models.tokens import Token
 import argparse
 
 DOMAIN = get_domain()
+LANGUAGE = get_language()
 
 class Search:
     def __init__(self, query) -> None:
@@ -16,7 +15,7 @@ class Search:
         self.result = []
 
     def search(self):
-        api_response = requests.get(f"https://streamingcommunity.{DOMAIN}/api/search?q={self.query}").json()
+        api_response = requests.get(f"https://{DOMAIN}/api/search?q={self.query}").json()
         for data in api_response["data"]:
             match data["type"]:
                 case "tv":
@@ -28,10 +27,10 @@ class Search:
 
 class StreamingCommunityAPI:
     def __init__(self, solution_query):
-        self.domain = DOMAIN
+        self.domain = DOMAIN + ("/"+ LANGUAGE if LANGUAGE else "")
         self.headers = {
             'X-Inertia': 'true', 
-            'X-Inertia-Version': json.loads(re.findall(r'data-page="([^"]+)"', requests.get(f"https://streamingcommunity.{self.domain}/").text)[0].replace("&quot;", '"'))["version"]
+            'X-Inertia-Version': json.loads(re.findall(r'data-page="([^"]+)"', requests.get(f"https://{self.domain}/").text)[0].replace("&quot;", '"'))["version"]
         }
         self.solution_query = solution_query
         if type(self.solution_query) == Url:
@@ -49,7 +48,7 @@ class StreamingCommunityAPI:
 
     def get_serie_info(self) -> list:
         response = requests.get(
-            f'https://streamingcommunity.{self.domain}/titles/{self.solution_query.internal_id}-{self.solution_query.slug}',
+            f'https://{self.domain}/titles/{self.solution_query.internal_id}-{self.solution_query.slug}',
             headers=self.headers
         ).json()
         # da qua possiamo espandere e prendere un sacco di infos sulla serie. Per ora prendiamo solo le stagioni
@@ -60,7 +59,7 @@ class StreamingCommunityAPI:
     def get_season_info(self, season_index):
         headers = {'X-Inertia-Partial-Component': 'Titles/Title',  'X-Inertia-Partial-Data': 'loadedSeason'}
         response = requests.get(
-            f'https://streamingcommunity.{self.domain}/titles/{self.solution_query.internal_id}-{self.solution_query.slug}/stagione-{season_index}',
+            f'https://{self.domain}/titles/{self.solution_query.internal_id}-{self.solution_query.slug}/stagione-{season_index}',
             headers={**self.headers, **headers},
         )
         # da qua possiamo espandere e prendere un sacco di infos sulla stagione. Ora prendiamo solo gli episodi
@@ -71,7 +70,7 @@ class StreamingCommunityAPI:
 
     # MARK: both return an iframe
     def get_episode_info(self, episode_id):
-        response = requests.get(f'https://streamingcommunity.{self.domain}/watch/{self.solution_query.internal_id}', 
+        response = requests.get(f'https://{self.domain}/watch/{self.solution_query.internal_id}', 
             params={'e': episode_id}, 
             headers=self.headers
         ).json()
@@ -80,8 +79,9 @@ class StreamingCommunityAPI:
         return episode_name, iframe_url
 
     def get_movie_info(self):
+        print(f'https://{self.domain}/watch/{self.solution_query.internal_id}')
         response = requests.get(
-            f'https://streamingcommunity.{self.domain}/watch/{self.solution_query.internal_id}',
+            f'https://{self.domain}/watch/{self.solution_query.internal_id}',
             headers=self.headers,
         ).json()
         # da qua possiamo prendere un sacco di infos sul film
@@ -89,6 +89,9 @@ class StreamingCommunityAPI:
         return iframe_url
 
     def get_url_info(self):
+        if self.solution_query.url.startswith("https://vixsrc.to"):
+            return self.solution_query.url
+
         response = requests.get(
             self.solution_query.url,
             headers=self.headers,
@@ -98,18 +101,26 @@ class StreamingCommunityAPI:
 
         internal_url = response["url"]
         response = requests.get(
-            f'https://streamingcommunity.{self.domain}{internal_url}',
+            f'https://{self.domain}{internal_url}',
             headers=self.headers,
         ).json()
         iframe_url = response["props"]["embedUrl"]
         return iframe_url
 
     @staticmethod
-    def get_tokens_from_iframe(url):
+    def normalize_url_to_vixsrc(url):
+        if url.startswith("https://vixsrc.to"):
+            return url
+        
         page = requests.get(url).text
         iframe_url = re.findall(r'src="([^"]+)"', page)[0].replace("&amp;", "&")
-        internal_id = re.search(r'https:\/\/vixcloud\.co\/embed\/(\d+)', iframe_url)[1]
-        iframe_source = requests.get(iframe_url).content
+        return iframe_url
+
+    @staticmethod
+    def get_tokens_from_iframe(url):
+        url = StreamingCommunityAPI.normalize_url_to_vixsrc(url)
+
+        iframe_source = requests.get(url).content
         iframe_video_infos = re.findall(r'<script>([\s\S]*?)<\/script>', iframe_source.decode())
 
         if playlist_match := re.search(r'params:\s*\{([\s\S]*?)\}\s*,', str(iframe_video_infos)):
@@ -118,10 +129,11 @@ class StreamingCommunityAPI:
             exp = re.findall(r"'expires':\s*'([^']*)'", playlist_match_formatted)[0]
             internal_url = re.findall(r"url:\s*'([^']*)',", str(iframe_video_infos).replace("\\", ''))[0]
             fhd = re.findall(r"canPlayFHD\s*true\s*\n", str(iframe_video_infos).replace("\\", '')) is not None
-            return internal_url, Token(*params_clean_matches, fhd=fhd, expiration=exp)
+            filename = re.findall(r"filename\":\s*\"([^\"]*)\"", str(iframe_video_infos).replace("\\", ''))[0]
+            return internal_url, Token(*params_clean_matches, fhd=fhd, expiration=exp, base_url=url), filename
 
     def get_media_contents(self, internal_url, tokens):
-        self.master_uri = f"{internal_url}&{str(tokens)}"
+        self.master_uri = f"{internal_url}?{str(tokens)}"
         r = requests.get(self.master_uri)
         assert(r.status_code == 200)
         parser = M3U8PlaylistParser(r.text)
@@ -131,21 +143,21 @@ class StreamingCommunityAPI:
 
 
 def main():
-    logo = f'''
+    logo = f"""
    _____ __                            ____            __    __     
   / ___// /_________  ____ _____ ___  / __ )__  ______/ /___/ /_  __
   \__ \/ __/ ___/ _ \/ __ `/ __ `__ \/ __  / / / / __  / __  / / / /
  ___/ / /_/ /  /  __/ /_/ / / / / / / /_/ / /_/ / /_/ / /_/ / /_/ / 
 /____/\__/_/   \___/\__,_/_/ /_/ /_/_____/\__,_/\__,_/\__,_/\__, / 
 .{DOMAIN + " "*(58-len(DOMAIN))}/____/ 
-    '''
+    """
     def center(var:str, space:int=None): return '\n'.join(' ' * int(space or (os.get_terminal_size().columns - len(var.splitlines()[len(var.splitlines()) // 2])) / 2) + line for line in var.splitlines())
     print(center(logo))
 
     versioning_control()
 
     parser = argparse.ArgumentParser(prog='StreamBuddy')
-    parser.add_argument('--url', required=False)
+    parser.add_argument('--url', '-u', required=False)
     args = parser.parse_args()
     
     if args.url is None:
@@ -174,158 +186,9 @@ def main():
     else:
         iframe_url = sc.get_url_info()
 
-    internal_url, tokens = sc.get_tokens_from_iframe(iframe_url)
-    media = sc.get_media_contents(internal_url, tokens)
-    
-    if sc.content_type in ["tv", "movie"]:
-        quality_index = ask.display_possible_qualities()
-        action = ask.display_possible_actions()
-        actions_map = {
-            (0,): lambda: perform_download(media, quality_index),
-            (1,): lambda: open_web_page(),
-            (0, 1): lambda: download_and_open_web_page(media, quality_index),
-        }
+    internal_url, tokens, filename = sc.get_tokens_from_iframe(iframe_url)
+    master_uri = f"{internal_url}?{str(tokens)}"
 
-        def perform_download(media, quality_index):
-            # m3u8_To_MP4.multithread_download(media["video_tracks"][quality_index])
-            track = media["video_tracks"][quality_index]
-            m3u8 = requests.get(track).text
-            download_options = {
-                "track": media["video_tracks"][quality_index],
-                "audio": media["audio_tracks"][0][1],
-                "subtitles": "",
-                "track_infos": {
-                    "id": internal_id,
-                    "title": title,
-                }
-            }
-            VideoDownloader().download(download_options)
-
-        def open_web_page():
-            def run_app():
-                app = Flask(__name__)
-                @app.route('/shutdown', methods=['POST'])
-                def shutdown_flask_app():
-                    return os.kill(os.getpid(), signal.SIGTERM)
-                @app.route('/')
-                def render_html():
-                    html_content = f'''
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>StreamBuddy player</title>
-                        <link rel="stylesheet" href="https://unpkg.com/plyr@3/dist/plyr.css"/>
-                    </head>
-                    <style>
-                        html, body {{
-                            margin: 0;
-                            padding: 0;
-                            height: 100%;
-                            background: #121212;
-                            font-family: sans-serif;
-                            font-weight: 300;
-                        }}
-                        .overlay {{
-                            text-align: left;
-                            position: absolute;
-                            color:white;
-                            margin-left: 20px;
-                            opacity: 1; /* initially visible */
-                            transition: opacity 0.5s ease;
-                            top: 0;
-                            left: 0;
-                            right: 0;
-                            z-index: 999;
-                            pointer-events: none;
-                        }}
-                        .container {{
-                            height: 100vh;
-                        }}
-                        .plyr {{
-                            border-radius: 4px;
-                            height: 100%;
-                        }}
-                    </style>
-                    <body>
-                        <div class="overlay"><h1>{title}</h1></div>
-                        <div class="container">
-                            <video controls crossorigin playsinline></video>
-                        </div>
-                        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-                        <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-                    </body>
-                    <script>
-                    document.addEventListener('DOMContentLoaded', function () {{
-                        var video = document.querySelector('video');
-                        var videoSrc = '{sc.master_uri}';
-
-                        const controls = ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time','duration', 'mute','volume','captions', 'settings', 'fullscreen'];
-                        
-                        // captions.update is required for captions to work with hls.js
-                        const player = new Plyr(video, {{controls, title: "{title}", captions: {{update: true}}}});
-                        var overlay = document.querySelector(".overlay")
-                        var timeout;
-                        function hideOverlay() {{overlay.style.opacity = '0';}}
-                        function resetOverlayTimeout() {{
-                            clearTimeout(timeout); // clear existing timeout
-                            overlay.style.opacity = '1'; // show overlay
-                            timeout = setTimeout(hideOverlay, 2000); // hide overlay after 2 seconds
-                        }}
-                        // Reset the overlay disappearance timeout on video events
-                        video.addEventListener('play', resetOverlayTimeout);
-                        video.addEventListener('pause', resetOverlayTimeout);
-                        video.addEventListener('seeked', resetOverlayTimeout);
-                        video.addEventListener('mouseenter', resetOverlayTimeout);
-                        video.addEventListener('mouseleave', function() {{
-                            timeout = setTimeout(hideOverlay, 300);
-                        }});
-
-                        if (Hls.isSupported()) {{
-                            var hls = new Hls();
-                            hls.loadSource(videoSrc);
-                            hls.attachMedia(video);
-                            hls.on(Hls.Events.MANIFEST_PARSED, function () {{
-                                video.play();
-                            }});
-                        }}
-                        // HLS.js is not supported on platforms that do not have Media Source Extensions (MSE) enabled.
-                        // When the browser has built-in HLS support (check using `canPlayType`), we can provide an HLS manifest (i.e. .m3u8 URL) directly to the video element through the `src` attribute.
-                        else if (video.canPlayType('application/vnd.apple.mpegurl')) {{
-                            video.src = videoSrc;
-                            video.addEventListener('loadedmetadata', function () {{
-                                video.play();
-                            }});
-                        }}
-                    }});
-
-                    // to detect the closure of the player
-                    window.onbeforeunload = function() {{
-                        navigator.sendBeacon('http://127.0.0.1:5000/shutdown');
-                    }};
-                    </script>
-                    </html>
-                    '''
-                    return html_content
-
-                app.run(port=5001, host='0.0.0.0', threaded=True)
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(run_app)
-                webbrowser.open("http://127.0.0.1:5001")
-                # se vuoi guardare il contenuto su un altro dispositivo assicurati che sia condivida la rete network con questo dispositivo
-                # poi copia nel motore di ricerca l'indirizzo IP pubblico della tua rete seguito da :5001
-                # LO VEDI ANCHE DALLA CONSOLE:
-                #  * Running on all addresses (0.0.0.0)
-                #  * Running on http://127.0.0.1:5001    <-- attuale
-                #  * Running on http://192.168.1.3:5001  <-- per accedere da un altro dispositivo
-
-
-        def download_and_open_web_page(media, quality_index):
-            open_web_page()
-            perform_download(media, quality_index)
-
-        actions_map.get(tuple(sorted(action)), lambda: None)()
-    else:
-        print(f"yt-dlp '{sc.master_uri}' -f 'bestvideo+bestaudio' --write-sub --sub-langs 'all'")
+    print(f"yt-dlp '{master_uri}' -f 'bestvideo+bestaudio' --write-sub --sub-langs 'all' -o '{filename}'")
 
 main()

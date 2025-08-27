@@ -6,7 +6,7 @@ def get_domain(file_path='config.ini'):
         loc = r.headers.get('location')
         if loc is None:
             raise ValueError
-        return r.headers['Location'].removeprefix("https://streamingcommunity.").removesuffix("/")
+        return r.headers['Location'].removeprefix("https://").removesuffix("/")
     except requests.exceptions.ConnectionError:
         pass
     except ValueError:
@@ -15,12 +15,20 @@ def get_domain(file_path='config.ini'):
     config.read(file_path)
     return config['DOMAIN']['updated']
 
+def get_language(file_path='config.ini'):
+    config = configparser.ConfigParser()
+    config.read(file_path)
+    try:
+        return config['DOMAIN']['language']
+    except ValueError:
+        return None
+
 def versioning_control(file_path="config.ini"):
     config = configparser.ConfigParser()
     config.read(file_path)
     current_installed_version = config['VERSION']['local']
 
-    newest_version = re.search(r"local = (\d+\.\d+\.\d+)", requests.get("https://raw.githubusercontent.com/Bbalduzz/stream-buddy/main/config.ini").text)[0].removeprefix("local = ")
+    newest_version = re.search(r"local = (\d+\.\d+\.\d+)", requests.get("https://raw.githubusercontent.com/TheZ3ro/stream-buddy/main/config.ini").text)[0].removeprefix("local = ")
     if current_installed_version != newest_version:
         print(f"New version available: {newest_version}")
         return False

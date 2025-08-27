@@ -7,7 +7,7 @@
                                                            /____/
 ```
 
-guarda o scarica contenuti da StreamingCommunity
+guarda o scarica contenuti da StreamingCommunity / VixSrc.to
 <table>
   <tr>
     <th align="left">Features</th>
@@ -41,7 +41,7 @@ guarda o scarica contenuti da StreamingCommunity
 ## How to
 - scarica python
 - clona questa repository:
-  - usando `git`: `git clonee https://github.com/Bbalduzz/stream-buddy.git`
+  - usando `git`: `git clonee https://github.com/TheZ3ro/stream-buddy.git`
   - manualmente: scarica lo zip dal pulsante verde con scritto "Code" e unzippalo
 - scarica le librerie necessarie
   - `pip install -r requirements.txt`
@@ -70,7 +70,7 @@ python3 ./main.py <url>
 Per il download veloce dei video si consiglia l'uso di `yt-dlp`.
 
 ## Demo
-https://github.com/Bbalduzz/stream-buddy/assets/81587335/1a83436a-1b80-454a-be53-f1dfd8aa1023
+https://github.com/TheZ3ro/stream-buddy/assets/81587335/1a83436a-1b80-454a-be53-f1dfd8aa1023
 
 
 

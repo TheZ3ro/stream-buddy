@@ -1,5 +1,14 @@
+from urllib.parse import urlparse, parse_qs
+
 class Token:
-	def __init__(self, token = None, token360p = None, token480p = None, token720p = None, token1080p = None, expiration = None, fhd = False) -> None:
+	def __init__(self, token = None, token360p = None, token480p = None, token720p = None, token1080p = None, expiration = None, fhd = False, base_url = None) -> None:
+		if base_url is not None:
+			q = urlparse(base_url).query
+			params = parse_qs(q)
+			for key in ["t", "token", "referer", "expires", "canPlayFHD"]:
+				if key in params:
+					params.pop(key)
+			self.params = params
 		self.token = token
 		self.token360p = token360p
 		self.token480p = token480p
