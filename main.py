@@ -129,7 +129,8 @@ class StreamingCommunityAPI:
             exp = re.findall(r"'expires':\s*'([^']*)'", playlist_match_formatted)[0]
             internal_url = re.findall(r"url:\s*'([^']*)',", str(iframe_video_infos).replace("\\", ''))[0]
             fhd = re.findall(r"canPlayFHD\s*true\s*\n", str(iframe_video_infos).replace("\\", '')) is not None
-            filename = re.findall(r"filename\":\s*\"([^\"]*)\"", str(iframe_video_infos).replace("\\", ''))[0]
+            filename = re.findall(r"filename\":\s*\"([^\"]*)\"", str(iframe_video_infos).replace("\\", ''))
+            filename = filename[0] if filename else url.split("/")[-1].split("?")[0] + ".mp4"
             return internal_url, Token(*params_clean_matches, fhd=fhd, expiration=exp, base_url=url), filename
 
     def get_media_contents(self, internal_url, tokens):
@@ -189,6 +190,6 @@ def main():
     internal_url, tokens, filename = sc.get_tokens_from_iframe(iframe_url)
     master_uri = f"{internal_url}?{str(tokens)}"
 
-    print(f"yt-dlp '{master_uri}' -f 'bestvideo+bestaudio' --write-sub --sub-langs 'all' -o '{filename}'")
+    print(f"yt-dlp '{master_uri}' --write-sub --sub-langs 'all' -o '{filename}' -f 'bestvideo+bestaudio'")
 
 main()
