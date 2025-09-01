@@ -69,8 +69,6 @@ python3 ./main.py <url>
 
 Per il download veloce dei video si consiglia l'uso di `yt-dlp`.
 
-## Demo
-https://github.com/TheZ3ro/stream-buddy/assets/81587335/1a83436a-1b80-454a-be53-f1dfd8aa1023
 
 
 
